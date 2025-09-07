@@ -1,0 +1,2 @@
+once you run the python server code you get an ip address copy that address and paste in any browser:http://10.242.180.233:5000
+Note:python server code file name=inte.py 

@@ -1,0 +1,150 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <NewPing.h>
+#include <ESP32Servo.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// WiFi credentials
+const char* ssid = "Shivp";
+const char* password = "ujwal312004";
+const char* serverUrl = "http://10.48.165.233:5000/classify";
+
+// Ultrasonic and Servo
+#define TRIGGER_PIN  15
+#define ECHO_PIN     14
+#define SERVO_PIN    16
+#define MAX_DISTANCE 200
+
+NewPing sonar(TRIGGER_PIN, ECHO_PIN, MAX_DISTANCE);
+Servo myservo;
+
+// LCD (16x2 I2C, address 0x27)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Function to connect/reconnect WiFi
+void connectWiFi() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.print("Connecting to WiFi...");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Connecting WiFi");
+    WiFi.begin(ssid, password);
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 30) {  // Retry for 15 seconds
+      delay(500);
+      Serial.print(".");
+      attempts++;
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println("\nConnected to WiFi");
+      Serial.println("IP: " + WiFi.localIP().toString());
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("WiFi Connected");
+      lcd.setCursor(0, 1);
+      lcd.print(WiFi.localIP().toString());
+      delay(2000);
+    } else {
+      Serial.println("\nWiFi connection failed");
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("WiFi Failed");
+      delay(2000);
+    }
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // LCD init
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("Smart Dustbin");
+  delay(2000);
+
+  // WiFi connect
+  connectWiFi();
+
+  // Servo init
+  myservo.attach(SERVO_PIN);
+  myservo.write(90);  // Neutral position
+}
+
+void loop() {
+  unsigned int distance = sonar.ping_cm();
+
+  if (distance > 0 && distance < 5) {  // Object detected within 5 cm
+    Serial.println("Object detected at " + String(distance) + " cm");
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Detecting...");
+
+    // Delay to allow DroidCam to stabilize
+    delay(4000);  // Increased to 4 seconds
+
+    connectWiFi();  // Ensure WiFi is connected
+
+    if (WiFi.status() == WL_CONNECTED) {
+      HTTPClient http;
+      http.setTimeout(15000);  // 15 seconds timeout
+      http.begin(serverUrl);
+
+      int retries = 5;  // Increased retries
+      int httpCode = -1;
+      String classification = "unknown";
+      while (retries > 0 && httpCode != HTTP_CODE_OK) {
+        Serial.println("Sending HTTP GET, attempt " + String(6 - retries));
+        httpCode = http.GET();
+        if (httpCode == HTTP_CODE_OK) {
+          classification = http.getString();
+          classification.trim();
+          Serial.print("Classification: ");
+          Serial.println(classification);
+          break;
+        } else {
+          Serial.printf("HTTP request failed, code: %d\n", httpCode);
+          lcd.clear();
+          lcd.setCursor(0, 0);
+          lcd.print("Server Error");
+          lcd.setCursor(0, 1);
+          lcd.print("Code: " + String(httpCode));
+          retries--;
+          delay(1500);
+        }
+      }
+      http.end();
+
+      // Display and act on classification
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Waste Detected:");
+      lcd.setCursor(0, 1);
+      if (classification == "dry") {
+        myservo.write(160);  // Dry waste bin
+        lcd.print("Dry Waste");
+        delay(4000);  // Hold for 4 seconds
+      } else if (classification == "wet") {
+        myservo.write(20);   // Wet waste bin
+        lcd.print("Wet Waste");
+        delay(4000);  // Hold for 4 seconds
+      } else {
+        lcd.print("Unknown");
+        delay(2000);
+      }
+    } else {
+      Serial.println("WiFi not connected");
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("WiFi Error");
+      delay(2000);
+    }
+
+    myservo.write(90);  // Return to neutral
+    delay(6000);  // Wait before next detection
+  }
+
+  delay(100);
+}

@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Waste Classification Dashboard — Neon Glass</title>
+
+  <!-- Fonts & Icons -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" integrity="sha512-+0xYcL9pIY1q5KmlbQkSgD6tVhQb7E0t4K2QjQh0o6B3bJQ8V4Y2hS7mY0k0kK+U1zH7B2yW1zS6s8cH3Bv6Bw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <style>
+    :root {
+      /* Brand palette */
+      --bg1: #0c0f1d;
+      --bg2: #201c3a;
+      --accent: #8b5cf6; /* violet */
+      --accent2: #06b6d4; /* cyan */
+      --text: #e8eaf6;
+      --muted: #aab0d4;
+
+      /* Category colors */
+      --dry: #22c55e;        /* green */
+      --wet: #ef4444;        /* red */
+      --recyclable: #3b82f6; /* blue */
+      --hazardous: #f59e0b;  /* orange */
+      --unknown: #9ca3af;    /* gray */
+
+      /* Glass & glow */
+      --glass: rgba(255,255,255,0.08);
+      --glass-border: rgba(255,255,255,0.18);
+      --neon: 0 0 24px rgba(139,92,246,0.45), 0 0 48px rgba(6,182,212,0.25);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      color: var(--text);
+      background: linear-gradient(120deg, var(--bg1), var(--bg2));
+      overflow-x: hidden;
+    }
+
+    /* Animated gradient waves background */
+    .bg-anim {
+      position: fixed; inset: 0; z-index: -2;
+      background: radial-gradient(60% 80% at 10% 10%, rgba(139,92,246,0.25), transparent 60%),
+                  radial-gradient(60% 80% at 90% 20%, rgba(6,182,212,0.18), transparent 70%),
+                  radial-gradient(60% 80% at 30% 80%, rgba(245,158,11,0.12), transparent 70%);
+      filter: blur(40px) saturate(120%);
+      animation: floatBG 16s ease-in-out infinite alternate;
+    }
+    @keyframes floatBG { from { transform: translateY(-10px); } to { transform: translateY(10px); } }
+
+    /* Subtle particles */
+    .particles {
+      position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden;
+    }
+    .dot { position: absolute; width: 2px; height: 2px; background: rgba(255,255,255,0.35); border-radius: 50%; animation: drift var(--t) linear infinite; }
+    @keyframes drift { to { transform: translateY(-120vh) translateX(10vw); opacity: 0; } }
+
+    /* Header */
+    header {
+      padding: 28px 20px 10px; text-align: center; position: relative;
+    }
+    .title {
+      font-weight: 800; font-size: clamp(28px, 3.8vw, 44px);
+      letter-spacing: 0.5px;
+      text-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+    .subtitle { color: var(--muted); margin-top: 6px; font-weight: 500; }
+
+    /* Stats row */
+    .stats {
+      margin: 22px auto; max-width: 1200px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; padding: 0 18px;
+    }
+    .stat {
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06));
+      border: 1px solid var(--glass-border); border-radius: 18px; padding: 16px 18px; box-shadow: var(--neon);
+      display: flex; align-items: center; gap: 12px;
+    }
+    .stat i { font-size: 20px; opacity: 0.9; }
+    .stat .kicker { font-size: 12px; color: var(--muted); }
+    .stat .value { font-size: 22px; font-weight: 800; }
+
+    /* Layout */
+    .grid {
+      margin: 14px auto 40px; max-width: 1200px; padding: 0 18px; display: grid; gap: 18px;
+      grid-template-columns: 1.2fr 0.8fr; align-items: start;
+    }
+    .card {
+      position: relative; border-radius: 22px; padding: 20px; border: 1px solid var(--glass-border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06));
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      box-shadow: var(--neon);
+      transition: transform .3s ease, box-shadow .3s ease;
+    }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 0 0 1px rgba(255,255,255,0.2), var(--neon); }
+
+    .card h2 { margin: 0 0 14px; font-size: 18px; letter-spacing: .6px; font-weight: 700; }
+
+    /* Auto section */
+    .auto-preview { position: relative; border-radius: 16px; overflow: hidden; border: 1px dashed rgba(255,255,255,0.2); min-height: 240px; display: grid; place-items: center; }
+    .auto-preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .skeleton { position: absolute; inset: 0; background: linear-gradient(110deg, rgba(255,255,255,0.06) 8%, rgba(255,255,255,0.12) 18%, rgba(255,255,255,0.06) 33%); background-size: 200% 100%; animation: shimmer 1.6s linear infinite; }
+    @keyframes shimmer { to { background-position-x: -200%; } }
+
+    .result-row { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; }
+    .badge { padding: 8px 12px; border-radius: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; display: inline-flex; align-items: center; gap: 8px; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22), var(--neon); }
+    .badge i { font-size: 14px; }
+
+  
+
+    /* JSON box */
+    pre.json { margin: 14px 0 0; padding: 12px; border-radius: 12px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.16); max-height: 220px; overflow: auto; }
+
+    /* Upload zone */
+    .dropzone { border: 2px dashed rgba(255,255,255,0.35); border-radius: 16px; padding: 26px; text-align: center; transition: border-color .25s ease, transform .25s ease; position: relative; overflow: hidden; }
+    .dropzone input[type=file]{ display:none; }
+    .dropzone .cta { display:inline-flex; align-items:center; gap:10px; margin-top:10px; font-weight:700; background: linear-gradient(135deg, var(--accent), var(--accent2)); color:white; padding:10px 16px; border-radius: 999px; position: relative; overflow: hidden; }
+    .dropzone.active { border-color: var(--accent2); transform: scale(1.01); box-shadow: 0 0 0 2px rgba(6,182,212,0.25), var(--neon); }
+
+    /* Ripple on buttons */
+    .ripple { position: relative; overflow: hidden; }
+    .ripple:after { content:""; position:absolute; inset:0; transform: scale(0); opacity:.6; background: radial-gradient(circle, rgba(255,255,255,0.65) 10%, transparent 50%); transition: transform .45s ease, opacity .6s ease; }
+    .ripple:active:after { transform: scale(3); opacity:0; }
+
+    /* Footer actions */
+    .actions { display:flex; gap:10px; flex-wrap: wrap; }
+    .btn { background: linear-gradient(135deg, var(--accent2), var(--accent)); color: white; border: none; padding: 10px 14px; border-radius: 12px; font-weight: 700; cursor: pointer; box-shadow: var(--neon); }
+    .btn.secondary { background: linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.05)); color: var(--text); border: 1px solid var(--glass-border); }
+
+    /* Legend chips */
+    .legend { display:flex; gap:8px; flex-wrap: wrap; }
+    .chip { display:inline-flex; align-items:center; gap:8px; padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); font-size: 12px; }
+    .dot { width:10px; height:10px; border-radius:50%; }
+
+    /* Responsive */
+    @media (max-width: 992px) {
+      .stats { grid-template-columns: repeat(2,1fr); }
+      .grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      .stats { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-anim"></div>
+  <div class="particles" id="particles"></div>
+
+  <header>
+    <div class="title">Waste Classification Dashboard</div>
+    <div class="subtitle">Futuristic neon-glass UI • Live detection • Manual upload</div>
+  </header>
+
+  <!-- Stats Row -->
+  <section class="stats" aria-label="Live stats">
+   
+    <div class="stat" title="Current confidence">
+      <i class="fa-solid fa-gauge-high" style="color: var(--hazardous);"></i>
+      <div>
+        <div class="kicker">Last Confidence</div>
+        <div class="value" id="lastConf">0%</div>
+      </div>
+    </div>
+    <div class="stat" title="Uptime">
+      <i class="fa-solid fa-bolt" style="color: var(--dry);"></i>
+      <div>
+        <div class="kicker">Uptime</div>
+        <div class="value" id="uptime">00:00:00</div>
+      </div>
+    </div>
+  </section>
+
+  <main class="grid">
+    <!-- Left: Auto Detection -->
+    <section class="card" id="autoCard">
+      <h2><i class="fa-solid fa-robot"></i> Automatic Detection (DroidCam)</h2>
+      <div class="auto-preview" aria-live="polite">
+        <img id="autoImage" alt="Waiting for DroidCam image..." />
+        <div class="skeleton" id="autoSkeleton"></div>
+      </div>
+
+      <div class="result-row" style="margin-top:14px;">
+        <div class="badge" id="autoBadge" style="background: rgba(255,255,255,0.06);">
+          <i class="fa-solid fa-circle-question"></i>
+          <span id="autoLabel">Waiting…</span>
+        </div>
+        <div class="meter" title="Prediction confidence">
+          <canvas width="90" height="90" id="confCanvas"></canvas>
+          <div class="label" id="confLabel">0%</div>
+        </div>
+      </div>
+
+      <pre class="json" id="autoJSON">Waiting for predictions…</pre>
+
+      <div class="legend" style="margin-top:12px;">
+        <div class="chip"><span class="dot" style="background:var(--dry)"></span>Dry</div>
+        <div class="chip"><span class="dot" style="background:var(--wet)"></span>Wet</div>
+        <div class="chip"><span class="dot" style="background:var(--unknown)"></span>Unknown</div>
+      </div>
+    </section>
+
+    <!-- Right: Manual & Charts -->
+    <section class="card">
+      <h2><i class="fa-solid fa-hand-pointer"></i> Manual Image Detection</h2>
+
+      <div class="dropzone" id="dropzone">
+        <div>
+          <i class="fa-solid fa-cloud-arrow-up" style="font-size:22px; opacity:.9;"></i>
+          <div style="margin-top:6px; font-weight:700;">Drag & drop image here</div>
+          <div style="font-size:12px; color:var(--muted);">or</div>
+          <label class="cta ripple" for="fileInput"><i class="fa-solid fa-folder-open"></i> Browse Files</label>
+          <input id="fileInput" type="file" accept="image/*" />
+        </div>
+      </div>
+
+      <div class="actions" style="margin-top:12px;">
+        <button class="btn ripple" id="btnUpload"><i class="fa-solid fa-wand-magic-sparkles"></i> Upload & Classify</button>
+        <button class="btn secondary ripple" id="btnRefreshManual"><i class="fa-solid fa-arrows-rotate"></i> Refresh Result</button>
+      </div>
+
+      <pre class="json" id="manualJSON">Upload an image to see predictions.</pre>
+
+      <div class="card" style="margin-top:18px;">
+        <h2><i class="fa-solid fa-chart-pie"></i> Class Distribution</h2>
+        <canvas id="distChart" height="200"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    /* =========================
+       Tiny particle generator
+    ==========================*/
+    const particleHost = document.getElementById('particles');
+    for (let i = 0; i < 80; i++) {
+      const p = document.createElement('div');
+      p.className = 'dot';
+      const left = Math.random() * 100;
+      const top = 100 + Math.random() * 40; // start below view
+      const t = 6 + Math.random() * 14 + 's';
+      p.style.left = left + 'vw';
+      p.style.top = top + 'vh';
+      p.style.setProperty('--t', t);
+      particleHost.appendChild(p);
+    }
+
+    /* =========================
+       Counters & uptime
+    ==========================*/
+    let autoCount = 0, manualCount = 0;
+    const t0 = Date.now();
+    function tickUptime(){
+      const s = Math.floor((Date.now()-t0)/1000);
+      const h = String(Math.floor(s/3600)).padStart(2,'0');
+      const m = String(Math.floor((s%3600)/60)).padStart(2,'0');
+      const ss = String(s%60).padStart(2,'0');
+      document.getElementById('uptime').textContent = `${h}:${m}:${ss}`;
+      requestAnimationFrame(tickUptime);
+    }
+    tickUptime();
+
+    /* =========================
+       Circular confidence meter
+    ==========================*/
+   
+    /* =========================
+       Category utilities
+    ==========================*/
+    function themeFor(category){
+      const c = (category||'').toLowerCase();
+      if (c.includes('dry')) return { name:'DRY', color:'var(--dry)', icon:'fa-leaf' };
+      if (c.includes('wet')) return { name:'WET', color:'var(--wet)', icon:'fa-droplet' };
+      if (c.includes('recycl')) return { name:'RECYCLABLE', color:'var(--recyclable)', icon:'fa-recycle' };
+      if (c.includes('hazard')) return { name:'HAZARDOUS', color:'var(--hazardous)', icon:'fa-triangle-exclamation' };
+      return { name:'UNKNOWN', color:'var(--unknown)', icon:'fa-circle-question' };
+    }
+
+    /* =========================
+       Auto Detection polling
+       (expects your backend endpoints)
+    ==========================*/
+    const autoImage = document.getElementById('autoImage');
+    const autoSkel = document.getElementById('autoSkeleton');
+    const autoBadge = document.getElementById('autoBadge');
+    const autoLabel = document.getElementById('autoLabel');
+    const autoJSON = document.getElementById('autoJSON');
+    const lastConf = document.getElementById('lastConf');
+
+    async function fetchAuto(){
+      try{
+        autoSkel.style.display = 'block';
+        const res = await fetch('/auto_status', { cache: 'no-store' });
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        const data = await res.json();
+
+        // Image refresh-bust
+        if(data.image_url){
+          autoImage.src = data.image_url + '?t=' + Date.now();
+        }
+
+        // Predictions
+        const preds = data.predictions || [];
+        autoJSON.textContent = preds.length ? JSON.stringify(preds, null, 2) : 'No predictions yet from DroidCam.';
+
+        let cls = 'unknown', conf = 0;
+        if (preds.length){
+          const top = preds.reduce((a,b)=> (a.confidence>b.confidence? a : b));
+          cls = (top.class||data.classification||'unknown');
+          conf = Math.round((top.confidence||0)*100);
+        } else if (data.classification) {
+          cls = data.classification;
+          conf = Math.round((data.confidence||0)*100);
+        }
+        const theme = themeFor(cls);
+        autoBadge.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06))';
+        autoBadge.style.boxShadow = '0 0 0 1px '+theme.color+', '+getComputedStyle(document.documentElement).getPropertyValue('--neon');
+        autoBadge.innerHTML = `<i class="fa-solid ${theme.icon}"></i> <span id="autoLabel">${theme.name}</span>`;
+        autoLabel.textContent = theme.name;
+        lastConf.textContent = conf+"%";
+        drawGauge(conf/100, theme.color);
+
+        // counters & chart
+        if (cls){ updateCounts(theme.name); }
+      } catch(err){
+        autoJSON.textContent = 'Error fetching /auto_status';
+      } finally {
+        autoSkel.style.display = 'none';
+      }
+    }
+
+    setInterval(fetchAuto, 2000);
+    fetchAuto();
+
+    /* =========================
+       Manual upload with drag & drop
+    ==========================*/
+    const dropzone = document.getElementById('dropzone');
+    const fileInput = document.getElementById('fileInput');
+    const btnUpload = document.getElementById('btnUpload');
+    const btnRefreshManual = document.getElementById('btnRefreshManual');
+    const manualJSON = document.getElementById('manualJSON');
+
+    function setDropActive(v){ dropzone.classList.toggle('active', v); }
+
+    dropzone.addEventListener('dragover', e => { e.preventDefault(); setDropActive(true); });
+    dropzone.addEventListener('dragleave', () => setDropActive(false));
+    dropzone.addEventListener('drop', e => {
+      e.preventDefault(); setDropActive(false);
+      const f = e.dataTransfer.files?.[0]; if (!f) return;
+      fileInput.files = e.dataTransfer.files; // attach
+    });
+
+    dropzone.querySelector('label.cta').addEventListener('click', () => fileInput.click());
+
+    async function uploadSelected(){
+      const f = fileInput.files?.[0];
+      if(!f){ alert('Please choose an image first.'); return; }
+      const fd = new FormData(); fd.append('file', f);
+      manualJSON.textContent = 'Uploading…';
+      const res = await fetch('/upload', { method:'POST', body: fd });
+      const data = await res.json().catch(()=>({ success:false, error:'Invalid JSON' }));
+      if(data.success){
+        manualCount++; document.getElementById('manualCount').textContent = manualCount;
+        manualJSON.textContent = 'Uploaded. Fetching latest manual result…';
+        await fetchManual();
+      } else {
+        manualJSON.textContent = 'Upload failed: '+(data.error||'unknown error');
+      }
+    }
+
+    btnUpload.addEventListener('click', uploadSelected);
+    btnRefreshManual.addEventListener('click', fetchManual);
+
+    async function fetchManual(){
+      try{
+        const res = await fetch('/manual_status', { cache: 'no-store' });
+        if(!res.ok) throw new Error('HTTP '+res.status);
+        const data = await res.json();
+        const preds = data.predictions || [];
+        manualJSON.textContent = preds.length ? JSON.stringify(preds, null, 2) : 'Upload an image to see predictions.';
+        if (preds.length){
+          const top = preds.reduce((a,b)=> (a.confidence>b.confidence? a : b));
+          updateCounts(themeFor(top.class).name);
+        }
+      }catch(e){ manualJSON.textContent = 'Error fetching /manual_status'; }
+    }
+
+    /* =========================
+       Chart.js — class distribution
+    ==========================*/
+    const ctxChart = document.getElementById('distChart');
+    const chartData = {
+      labels: ['Dry','Wet','Unknown'],
+      datasets: [{
+        label: 'Detections',
+        data: [0,0,0],
+        borderWidth: 2,
+        backgroundColor: [
+          getComputedStyle(document.documentElement).getPropertyValue('--dry'),
+          getComputedStyle(document.documentElement).getPropertyValue('--wet'),
+          getComputedStyle(document.documentElement).getPropertyValue('--unknown')
+        ],
+        borderColor: 'rgba(255,255,255,0.5)'
+      }]
+    };
+    const distChart = new Chart(ctxChart, { type: 'pie', data: chartData, options: { plugins:{ legend:{ labels:{ color:'#eaeaea' } } } } });
+
+    function updateCounts(categoryName){
+      // increment counters and update chart
+      if (!categoryName) return;
+      const idxMap = { 'DRY':0,'WET':1,'UNKNOWN':3 };
+      const idx = idxMap[categoryName] ?? 4;
+      chartData.datasets[0].data[idx]++;
+      distChart.update('none');
+      autoCount++; document.getElementById('autoCount').textContent = autoCount;
+    }
+  </script>
+</body>
+</html>

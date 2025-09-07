@@ -1,0 +1,2 @@
+Mixed waste project id:classification_mixed-kdiww
+dry and wet waste project id:dry-wet-object-detection-qxxpa
